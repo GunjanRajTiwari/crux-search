@@ -76,8 +76,8 @@ const App: React.FC = () => {
 	const finalAd: AdSlide = {
 		id: "ad-slide-final-crux-01",
 		imageUrl: "https://picsum.photos/seed/datascience/540/960",
-		caption: "Unlock Insights with Crux Data.",
-		advertiser: "Crux Analytics Co.",
+		caption: "Want your ad here?",
+		advertiser: "Mail: roarout20@gmail.com",
 		cta: "Get Started",
 	};
 
