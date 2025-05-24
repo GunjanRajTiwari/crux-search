@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Crux Search</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css" rel="stylesheet">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<script type="importmap">
+{
+  "imports": {
+    "react": "https://esm.sh/react@^19.1.0",
+    "react-dom/": "https://esm.sh/react-dom@^19.1.0/",
+    "react/": "https://esm.sh/react@^19.1.0/",
+    "@google/genai": "https://esm.sh/@google/genai@^1.0.1"
+  }
+}
+</script>
+<style>
+  :root {
+    --primary-accent: #1A73E8; /* Google Blue */
+    --primary-accent-hover: #1765CC; /* Darker Google Blue */
+    --primary-accent-text: #FFFFFF;
+    
+    --text-main: #202124; /* Google Primary Text */
+    --text-muted: #5F6368; /* Google Secondary Text */
+    --text-on-dark-bg: #E8EAED; /* For text on dark reel viewer */
+
+    --bg-main: #FFFFFF;
+    --bg-surface: #F8F9FA; /* Light gray for distinct surfaces */
+    --bg-element: #F1F3F4; /* For input fields, buttons if not accent */
+    
+    --border-color: #DADCE0; /* Google Border Color */
+    
+    --error-bg: #FCE8E6; /* Light Red */
+    --error-text: #A50E0E; /* Darker Red for text */
+    --error-border: #EA4335; /* Google Red */
+
+    /* Reel specific dark theme (can remain dark for content contrast) */
+    --reel-bg: #000000;
+    --reel-text-main: #FFFFFF;
+    --reel-text-active-phrase: #89BFFF; /* Lighter blue for active phrase on dark bg */
+    --reel-progress-bar-bg: rgba(255, 255, 255, 0.3);
+    --reel-progress-bar-fill: #FFFFFF; /* White fill for progress on dark top */
+    --reel-sponsored-bg: #FBC02D; /* Yellow for sponsored tag */
+    --reel-sponsored-text: #202124;
+  }
+
+  body {
+    font-family: 'Inter', sans-serif;
+    background-color: var(--bg-main);
+    color: var(--text-main);
+    overscroll-behavior-y: contain;
+  }
+  .caption-phrase {
+    transition: opacity 0.3s ease-in-out, transform 0.3s ease-in-out;
+    opacity: 0.8;
+    display: inline-block;
+    text-shadow: 1px 1px 3px rgba(0,0,0,0.85); /* Keep strong shadow for readability on images */
+  }
+  .caption-phrase-active {
+    opacity: 1;
+    transform: scale(1.03);
+    color: var(--reel-text-active-phrase);
+  }
+
+  .ad-placeholder-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    background-color: var(--bg-surface);
+    padding: 20px;
+    border-radius: 8px;
+    border: 1px solid var(--border-color);
+  }
+
+  .reel-viewer-container {
+    width: 100%;
+    max-width: 400px; /* Instagram story-like width */
+    aspect-ratio: 9 / 16;
+    margin: auto;
+    position: relative;
+    overflow: hidden;
+    border-radius: 16px; /* Rounded corners */
+    background-color: var(--reel-bg); /* Dark background for the reel content itself */
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15); /* Softer shadow for light theme */
+  }
+
+  .story-progress-bars {
+    position: absolute;
+    top: 12px;
+    left: 12px;
+    right: 12px;
+    display: flex;
+    gap: 4px;
+    height: 3px;
+    z-index: 20;
+  }
+
+  .story-progress-bar-segment {
+    flex-grow: 1;
+    background-color: var(--reel-progress-bar-bg);
+    border-radius: 2px;
+    overflow: hidden;
+  }
+
+  .story-progress-bar-fill {
+    height: 100%;
+    background-color: var(--reel-progress-bar-fill);
+    width: 0%;
+    transition: width 0.1s linear;
+    border-radius: 2px;
+  }
+  
+  .reel-tap-zone {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    z-index: 10;
+  }
+  .reel-tap-zone-prev {
+    left: 0;
+    width: 30%;
+  }
+  .reel-tap-zone-next {
+    right: 0;
+    width: 30%;
+  }
+  .reel-tap-zone-playpause {
+    left: 30%;
+    width: 40%;
+  }
+  .app-container {
+    display: flex;
+    flex-direction: column;
+    min-height: 100vh;
+    padding: 1rem;
+  }
+
+  @media (max-width: 640px) {
+    .app-container {
+      padding: 0.5rem;
+    }
+    .reel-viewer-container {
+      border-radius: 0; /* Full screen on mobile */
+      max-width: 100%;
+      height: 100%; /* Take full viewport height on mobile for story feel */
+    }
+    .story-progress-bars {
+        top: 16px; /* More padding on mobile */
+        left: 8px;
+        right: 8px;
+    }
+  }
+
+</style>
+</head>
+<body class="text-slate-100"> {/* Default Tailwind body text color will be overridden by body {} style */}
+  <div id="root"></div>
+  <script type="module" src="/index.tsx"></script>
+</body>
+</html><link rel="stylesheet" href="index.css">
+<script src="index.tsx" type="module"></script>

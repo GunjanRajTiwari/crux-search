@@ -1,0 +1,5 @@
+{
+  "name": "Crux Search",
+  "description": "A search engine that transforms search results into an engaging reel of images, captions, and voiceovers, powered by Gemini API.",
+  "requestFramePermissions": []
+}
