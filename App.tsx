@@ -1,311 +1,495 @@
-
-
-import React, { useState, useEffect, useCallback } from 'react';
-import SearchBar from './components/SearchBar';
-import ReelViewer from './components/ReelViewer';
-import LoadingSpinner from './components/LoadingSpinner';
-import ErrorDisplay from './components/ErrorDisplay';
-import AttributionLinks from './components/AttributionLinks';
-import { searchAndGenerateReelContent, generateImageForPrompt } from './services/geminiService';
-import { ReelSlide, ProcessedSearchResult, LoadingState, GroundingChunk, AdSlide, Phrase } from './types';
+import React, { useState, useEffect, useCallback } from "react";
+import SearchBar from "./components/SearchBar";
+import ReelViewer from "./components/ReelViewer";
+import LoadingSpinner from "./components/LoadingSpinner";
+import ErrorDisplay from "./components/ErrorDisplay";
+import AttributionLinks from "./components/AttributionLinks";
+import {
+	searchAndGenerateReelContent,
+	generateImageForPrompt,
+} from "./services/geminiService";
+import {
+	ReelSlide,
+	ProcessedSearchResult,
+	LoadingState,
+	GroundingChunk,
+	AdSlide,
+	Phrase,
+} from "./types";
+import Ads from "./components/Ads";
 
 const createPhrasesForSlide = (caption: string): Phrase[] => {
-  if (!caption) return [];
-  const words = caption.split(/\s+/);
-  const phrases: Phrase[] = [];
-  let currentPhraseText = "";
-  for (let i = 0; i < words.length; i++) {
-    currentPhraseText += (currentPhraseText ? " " : "") + words[i];
-    if ((currentPhraseText.split(/\s+/).length >= 3 && currentPhraseText.length > 15 && (i < words.length - 1 && words[i].match(/[.,!?;:]$/))) || currentPhraseText.split(/\s+/).length >= 6 || i === words.length - 1) {
-      phrases.push({ text: currentPhraseText.trim() });
-      currentPhraseText = "";
-    }
-  }
-  if (currentPhraseText.trim()) {
-    phrases.push({ text: currentPhraseText.trim() });
-  }
-  return phrases.filter(p => p.text);
+	if (!caption) return [];
+	const words = caption.split(/\s+/);
+	const phrases: Phrase[] = [];
+	let currentPhraseText = "";
+	for (let i = 0; i < words.length; i++) {
+		currentPhraseText += (currentPhraseText ? " " : "") + words[i];
+		if (
+			(currentPhraseText.split(/\s+/).length >= 3 &&
+				currentPhraseText.length > 15 &&
+				i < words.length - 1 &&
+				words[i].match(/[.,!?;:]$/)) ||
+			currentPhraseText.split(/\s+/).length >= 6 ||
+			i === words.length - 1
+		) {
+			phrases.push({ text: currentPhraseText.trim() });
+			currentPhraseText = "";
+		}
+	}
+	if (currentPhraseText.trim()) {
+		phrases.push({ text: currentPhraseText.trim() });
+	}
+	return phrases.filter(p => p.text);
 };
 
 const App: React.FC = () => {
-  const [query, setQuery] = useState<string>('');
-  const [reelSlides, setReelSlides] = useState<ReelSlide[]>([]);
-  const [currentSlideIndex, setCurrentSlideIndex] = useState<number>(0);
-  const [loadingState, setLoadingState] = useState<LoadingState>(LoadingState.IDLE);
-  const [error, setError] = useState<string | null>(null);
-  const [isPlaying, setIsPlaying] = useState<boolean>(false);
-  const [attributionChunks, setAttributionChunks] = useState<GroundingChunk[] | undefined>(undefined);
-  const [progressMessage, setProgressMessage] = useState<string>('');
-  const [areImagesLoadingOverall, setAreImagesLoadingOverall] = useState<boolean>(false);
+	const [query, setQuery] = useState<string>("");
+	const [reelSlides, setReelSlides] = useState<ReelSlide[]>([]);
+	const [currentSlideIndex, setCurrentSlideIndex] = useState<number>(0);
+	const [loadingState, setLoadingState] = useState<LoadingState>(
+		LoadingState.IDLE
+	);
+	const [error, setError] = useState<string | null>(null);
+	const [isPlaying, setIsPlaying] = useState<boolean>(false);
+	const [attributionChunks, setAttributionChunks] = useState<
+		GroundingChunk[] | undefined
+	>(undefined);
+	const [progressMessage, setProgressMessage] = useState<string>("");
+	const [areImagesLoadingOverall, setAreImagesLoadingOverall] =
+		useState<boolean>(false);
 
-  const appIsBusy = loadingState === LoadingState.SEARCHING || loadingState === LoadingState.GENERATING_IMAGES;
+	const appIsBusy =
+		loadingState === LoadingState.SEARCHING ||
+		loadingState === LoadingState.GENERATING_IMAGES;
 
+	const interimAd: AdSlide = {
+		id: "ad-interim-crux-01",
+		imageUrl: "https://picsum.photos/seed/workspaceplus/540/960",
+		caption: "Boost Your Productivity with Crux Solutions.",
+		advertiser: "Crux Innovations",
+		cta: "Discover Crux",
+		messageWhileWaiting:
+			"Crux AI is crafting your reel! While you wait, check this out:",
+	};
 
-  const interimAd: AdSlide = {
-    id: "ad-interim-crux-01",
-    imageUrl: "https://picsum.photos/seed/workspaceplus/540/960", 
-    caption: "Boost Your Productivity with Crux Solutions.",
-    advertiser: "Crux Innovations",
-    cta: "Discover Crux",
-    messageWhileWaiting: "Crux AI is crafting your reel! While you wait, check this out:"
-  };
+	const finalAd: AdSlide = {
+		id: "ad-slide-final-crux-01",
+		imageUrl: "https://picsum.photos/seed/datascience/540/960",
+		caption: "Unlock Insights with Crux Data.",
+		advertiser: "Crux Analytics Co.",
+		cta: "Get Started",
+	};
 
-  const finalAd: AdSlide = {
-    id: "ad-slide-final-crux-01",
-    imageUrl: "https://picsum.photos/seed/datascience/540/960", 
-    caption: "Unlock Insights with Crux Data.",
-    advertiser: "Crux Analytics Co.",
-    cta: "Get Started"
-  };
+	const resetState = useCallback((keepQuery = false) => {
+		setReelSlides([]);
+		setCurrentSlideIndex(0);
+		setError(null);
+		setIsPlaying(false);
+		setAttributionChunks(undefined);
+		setProgressMessage("");
+		setAreImagesLoadingOverall(false);
+		if (!keepQuery) setQuery("");
+		if (speechSynthesis.speaking || speechSynthesis.paused) {
+			speechSynthesis.cancel();
+		}
+	}, []);
 
-  const resetState = useCallback((keepQuery = false) => {
-    setReelSlides([]);
-    setCurrentSlideIndex(0);
-    setError(null);
-    setIsPlaying(false);
-    setAttributionChunks(undefined);
-    setProgressMessage('');
-    setAreImagesLoadingOverall(false);
-    if (!keepQuery) setQuery('');
-    if (speechSynthesis.speaking || speechSynthesis.paused) {
-      speechSynthesis.cancel();
-    }
-  }, []);
-  
-  const handleSearch = async (searchQuery: string) => {
-    if (!searchQuery.trim()) return;
-    
-    resetState(true);
-    setQuery(searchQuery);
-    setLoadingState(LoadingState.SEARCHING);
-    setProgressMessage('Initializing Crux search & generating content...');
+	const handleSearch = async (searchQuery: string) => {
+		if (!searchQuery.trim()) return;
 
-    try {
-      const { slides: initialSlides, groundingMetadata } = await searchAndGenerateReelContent(searchQuery);
-      setAttributionChunks(groundingMetadata?.groundingChunks);
+		resetState(true);
+		setQuery(searchQuery);
+		setLoadingState(LoadingState.SEARCHING);
+		setProgressMessage(
+			"Initializing Crux search & generating content..."
+		);
 
-      if (initialSlides.length === 0) {
-        setError("No reel content could be generated by Crux. Try a different search.");
-        setLoadingState(LoadingState.IDLE);
-        return;
-      }
-      
-      const slidesWithPhrasesAndPlaceholders = initialSlides.map(s => ({ 
-          ...s, 
-          imageUrl: undefined, 
-          phrases: createPhrasesForSlide(s.caption)
-      }));
-      setReelSlides(slidesWithPhrasesAndPlaceholders); 
-      setCurrentSlideIndex(0);
-      setLoadingState(LoadingState.GENERATING_IMAGES);
-      setIsPlaying(false);
-      setAreImagesLoadingOverall(true);
-      setProgressMessage(`Crux AI is visualizing ${slidesWithPhrasesAndPlaceholders.length} images...`);
-      
-      const imageGenerationPromises = slidesWithPhrasesAndPlaceholders.map(slide =>
-        generateImageForPrompt(slide.imagePrompt)
-          .catch(err => {
-            console.error(`Failed to generate image for prompt "${slide.imagePrompt}":`, err);
-            return `https://picsum.photos/seed/${encodeURIComponent(slide.id || slide.imagePrompt)}/540/960`;
-          })
-      );
+		try {
+			const { slides: initialSlides, groundingMetadata } =
+				await searchAndGenerateReelContent(searchQuery);
+			setAttributionChunks(groundingMetadata?.groundingChunks);
 
-      const imageUrls = await Promise.all(imageGenerationPromises);
+			if (initialSlides.length === 0) {
+				setError(
+					"No reel content could be generated by Crux. Try a different search."
+				);
+				setLoadingState(LoadingState.IDLE);
+				return;
+			}
 
-      const finalSlidesWithImages = slidesWithPhrasesAndPlaceholders.map((slide, index) => ({
-        ...slide,
-        imageUrl: imageUrls[index],
-      }));
-      
-      setReelSlides(finalSlidesWithImages);
-      setAreImagesLoadingOverall(false);
-      setCurrentSlideIndex(0); 
-      setLoadingState(LoadingState.READY);
-      setProgressMessage('');
-      setIsPlaying(true);
+			const slidesWithPhrasesAndPlaceholders = initialSlides.map(
+				s => ({
+					...s,
+					imageUrl: undefined,
+					phrases: createPhrasesForSlide(s.caption),
+				})
+			);
+			setReelSlides(slidesWithPhrasesAndPlaceholders);
+			setCurrentSlideIndex(0);
+			setLoadingState(LoadingState.GENERATING_IMAGES);
+			setIsPlaying(false);
+			setAreImagesLoadingOverall(true);
+			setProgressMessage(
+				`Crux AI is visualizing ${slidesWithPhrasesAndPlaceholders.length} images...`
+			);
 
-    } catch (err) {
-      console.error(err);
-      const errorMessage = err instanceof Error ? err.message : "An unknown error occurred.";
-      if (errorMessage.includes("API key") && !process.env.API_KEY) {
-         setError("API Key not configured for Crux Search. Please set the API_KEY environment variable for full functionality.");
-      } else {
-        setError(`Crux Search failed: ${errorMessage}`);
-      }
-      setLoadingState(LoadingState.ERROR);
-      setAreImagesLoadingOverall(false);
-      setProgressMessage('');
-    }
-  };
+			const imageGenerationPromises =
+				slidesWithPhrasesAndPlaceholders.map(slide =>
+					generateImageForPrompt(slide.imagePrompt).catch(
+						err => {
+							console.error(
+								`Failed to generate image for prompt "${slide.imagePrompt}":`,
+								err
+							);
+							return `https://picsum.photos/seed/${encodeURIComponent(
+								slide.id || slide.imagePrompt
+							)}/540/960`;
+						}
+					)
+				);
 
-  const handleNextSlide = useCallback(() => {
-    if (loadingState === LoadingState.REEL_FINISHED) return;
-    if (currentSlideIndex < reelSlides.length - 1) {
-      setCurrentSlideIndex(prevIndex => prevIndex + 1);
-      setIsPlaying(true);
-    } else {
-      setIsPlaying(false);
-      setLoadingState(LoadingState.REEL_FINISHED);
-    }
-  }, [currentSlideIndex, reelSlides.length, loadingState]);
+			const imageUrls = await Promise.all(imageGenerationPromises);
 
-  const handlePrevSlide = useCallback(() => {
-    if (loadingState === LoadingState.REEL_FINISHED) {
-        setLoadingState(LoadingState.READY);
-        setCurrentSlideIndex(reelSlides.length - 1);
-        setIsPlaying(true); 
-        return;
-    }
-    if (currentSlideIndex > 0) {
-      setCurrentSlideIndex(prevIndex => prevIndex - 1);
-      setIsPlaying(true);
-    }
-  }, [currentSlideIndex, loadingState, reelSlides.length]);
+			const finalSlidesWithImages =
+				slidesWithPhrasesAndPlaceholders.map((slide, index) => ({
+					...slide,
+					imageUrl: imageUrls[index],
+				}));
 
-  const handleTogglePlay = useCallback(() => {
-    if (loadingState === LoadingState.REEL_FINISHED) {
-        setLoadingState(LoadingState.READY);
-        setCurrentSlideIndex(0);
-        setIsPlaying(true);
-        return;
-    }
-    if (reelSlides.length > 0 && (loadingState === LoadingState.READY || (loadingState === LoadingState.GENERATING_IMAGES && !areImagesLoadingOverall))) {
-      setIsPlaying(prevIsPlaying => !prevIsPlaying);
-    }
-  }, [reelSlides.length, loadingState, areImagesLoadingOverall]);
+			setReelSlides(finalSlidesWithImages);
+			setAreImagesLoadingOverall(false);
+			setCurrentSlideIndex(0);
+			setLoadingState(LoadingState.READY);
+			setProgressMessage("");
+			setIsPlaying(true);
+		} catch (err) {
+			console.error(err);
+			const errorMessage =
+				err instanceof Error
+					? err.message
+					: "An unknown error occurred.";
+			if (errorMessage.includes("API key") && !process.env.API_KEY) {
+				setError(
+					"API Key not configured for Crux Search. Please set the API_KEY environment variable for full functionality."
+				);
+			} else {
+				setError(`Crux Search failed: ${errorMessage}`);
+			}
+			setLoadingState(LoadingState.ERROR);
+			setAreImagesLoadingOverall(false);
+			setProgressMessage("");
+		}
+	};
 
-  const handleSpeechEnd = useCallback(() => {
-    if (isPlaying && reelSlides.length > 0 && loadingState === LoadingState.READY) {
-       handleNextSlide();
-    }
-  }, [isPlaying, reelSlides.length, loadingState, handleNextSlide]);
+	const handleNextSlide = useCallback(() => {
+		if (loadingState === LoadingState.REEL_FINISHED) return;
+		if (currentSlideIndex < reelSlides.length - 1) {
+			setCurrentSlideIndex(prevIndex => prevIndex + 1);
+			setIsPlaying(true);
+		} else {
+			setIsPlaying(false);
+			setLoadingState(LoadingState.REEL_FINISHED);
+		}
+	}, [currentSlideIndex, reelSlides.length, loadingState]);
 
+	const handlePrevSlide = useCallback(() => {
+		if (loadingState === LoadingState.REEL_FINISHED) {
+			setLoadingState(LoadingState.READY);
+			setCurrentSlideIndex(reelSlides.length - 1);
+			setIsPlaying(true);
+			return;
+		}
+		if (currentSlideIndex > 0) {
+			setCurrentSlideIndex(prevIndex => prevIndex - 1);
+			setIsPlaying(true);
+		}
+	}, [currentSlideIndex, loadingState, reelSlides.length]);
 
-  useEffect(() => {
-    return () => {
-      if (speechSynthesis.speaking || speechSynthesis.paused) {
-        speechSynthesis.cancel();
-      }
-    };
-  }, []);
+	const handleTogglePlay = useCallback(() => {
+		if (loadingState === LoadingState.REEL_FINISHED) {
+			setLoadingState(LoadingState.READY);
+			setCurrentSlideIndex(0);
+			setIsPlaying(true);
+			return;
+		}
+		if (
+			reelSlides.length > 0 &&
+			(loadingState === LoadingState.READY ||
+				(loadingState === LoadingState.GENERATING_IMAGES &&
+					!areImagesLoadingOverall))
+		) {
+			setIsPlaying(prevIsPlaying => !prevIsPlaying);
+		}
+	}, [reelSlides.length, loadingState, areImagesLoadingOverall]);
 
-  const currentVisibleSlide = reelSlides.length > 0 ? reelSlides[currentSlideIndex] : null;
-  const isResultsView = loadingState !== LoadingState.IDLE && loadingState !== LoadingState.ERROR;
-  const showInterimAd = (loadingState === LoadingState.SEARCHING || (loadingState === LoadingState.GENERATING_IMAGES && areImagesLoadingOverall && currentSlideIndex === 0));
+	const handleSpeechEnd = useCallback(() => {
+		if (
+			isPlaying &&
+			reelSlides.length > 0 &&
+			loadingState === LoadingState.READY
+		) {
+			handleNextSlide();
+		}
+	}, [isPlaying, reelSlides.length, loadingState, handleNextSlide]);
 
-  const getAppLogo = () => (
-    <>
-      <span style={{ fontWeight: 700, color: 'var(--primary-accent)' }}>Crux</span>
-      <span style={{ fontWeight: 400, color: 'var(--text-main)' }}> Search</span>
-    </>
-  );
-  
-  const getAppTitle = () => {
-    if (!isResultsView || showInterimAd) return getAppLogo();
-    if (loadingState === LoadingState.REEL_FINISHED) return "Reel Complete!";
-    return query ? `Crux Reel: "${query.substring(0,25)}${query.length > 25 ? '...' : ''}"` : getAppLogo();
-  }
+	useEffect(() => {
+		return () => {
+			if (speechSynthesis.speaking || speechSynthesis.paused) {
+				speechSynthesis.cancel();
+			}
+		};
+	}, []);
 
-  return (
-    <div className="app-container" style={{backgroundColor: 'var(--bg-main)', color: 'var(--text-main)'}}>
-      <header className={`w-full text-center ${isResultsView && !showInterimAd ? 'py-3' : 'my-6 md:my-8'}`}>
-        <h1 className={`font-semibold ${isResultsView && !showInterimAd ? 'text-xl' : 'text-4xl md:text-5xl'}`}
-            style={{color: isResultsView && !showInterimAd && !(query) ? 'var(--text-muted)' : 'var(--text-main)' }}
-        >
-          {getAppTitle()}
-        </h1>
-      </header>
+	const currentVisibleSlide =
+		reelSlides.length > 0 ? reelSlides[currentSlideIndex] : null;
+	const isResultsView =
+		loadingState !== LoadingState.IDLE &&
+		loadingState !== LoadingState.ERROR;
+	const showInterimAd =
+		loadingState === LoadingState.SEARCHING ||
+		(loadingState === LoadingState.GENERATING_IMAGES &&
+			areImagesLoadingOverall &&
+			currentSlideIndex === 0);
 
-      {!showInterimAd && (
-        <SearchBar 
-            onSearch={handleSearch} 
-            isLoading={appIsBusy}
-            isResultsView={isResultsView}
-        />
-      )}
+	const getAppLogo = () => (
+		<>
+			<span
+				style={{
+					fontWeight: 700,
+					color: "var(--primary-accent)",
+				}}>
+				Crux
+			</span>
+			<span style={{ fontWeight: 400, color: "var(--text-main)" }}>
+				{" "}
+				Search
+			</span>
+		</>
+	);
 
-      {error && <ErrorDisplay message={error} onDismiss={() => { setError(null); setLoadingState(LoadingState.IDLE); resetState(); }} />}
+	const getAppTitle = () => {
+		if (!isResultsView || showInterimAd) return getAppLogo();
+		if (loadingState === LoadingState.REEL_FINISHED)
+			return "Reel Complete!";
+		return query
+			? `Crux Reel: "${query.substring(0, 25)}${
+					query.length > 25 ? "..." : ""
+			  }"`
+			: getAppLogo();
+	};
 
-      {showInterimAd && !error && (
-        <div className="w-full flex flex-col items-center text-center flex-grow justify-center">
-           <p className="text-md mb-2 font-medium" style={{color: 'var(--primary-accent)'}}>{interimAd.messageWhileWaiting}</p>
-          <div className="mb-4 ad-placeholder-container" style={{borderColor: 'var(--border-color)', backgroundColor: 'var(--bg-surface)'}}>
-            <img src={interimAd.imageUrl} alt={interimAd.caption} className="w-full max-w-xs rounded mb-2" />
-            <p className="text-lg font-semibold mb-1" style={{color: 'var(--text-main)'}}>{interimAd.caption}</p>
-            <p className="text-xs mb-2" style={{color: 'var(--text-muted)'}}>{interimAd.advertiser} - Sponsored</p>
-            <a 
-                href="#" 
-                onClick={(e) => e.preventDefault()}
-                className="inline-block text-sm font-medium py-2 px-4 rounded-md transition-colors"
-                style={{backgroundColor: 'var(--primary-accent)', color: 'var(--primary-accent-text)'}}
-                onMouseOver={(e) => e.currentTarget.style.backgroundColor = 'var(--primary-accent-hover)'}
-                onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'var(--primary-accent)'}
-            >
-                {interimAd.cta}
-            </a>
-          </div>
-          <LoadingSpinner text={progressMessage || "Loading..."} size="sm" />
-          <p className="text-xs mt-3" style={{color: 'var(--text-muted)'}}>This is a simulated ad. Actual Google Ads integration is not implemented.</p>
-        </div>
-      )}
-      
-      {!showInterimAd && isResultsView && !error && (
-        <div className="w-full flex flex-col items-center flex-grow justify-center">
-          {(currentVisibleSlide || loadingState === LoadingState.REEL_FINISHED) && (
-            <ReelViewer 
-                slide={loadingState === LoadingState.REEL_FINISHED ? finalAd : currentVisibleSlide}
-                isPlaying={isPlaying && loadingState === LoadingState.READY && !areImagesLoadingOverall}
-                onSpeechEnd={handleSpeechEnd}
-                totalSlides={reelSlides.length > 0 ? reelSlides.length : 1}
-                currentSlideNumber={loadingState === LoadingState.REEL_FINISHED ? reelSlides.length : currentSlideIndex + 1}
-                isAdView={loadingState === LoadingState.REEL_FINISHED}
-                onPrevClicked={handlePrevSlide}
-                onNextClicked={handleNextSlide}
-                onTogglePlayClicked={handleTogglePlay}
-                isLoadingImage={areImagesLoadingOverall && loadingState === LoadingState.GENERATING_IMAGES && !currentVisibleSlide?.imageUrl}
-            />
-          )}
-          {loadingState === LoadingState.GENERATING_IMAGES && areImagesLoadingOverall && (!currentVisibleSlide || !currentVisibleSlide.imageUrl) && (
-             <LoadingSpinner text={progressMessage || "Preparing your Crux reel..."} />
-          )}
-          {loadingState === LoadingState.REEL_FINISHED && (
-               <button 
-                  onClick={handleTogglePlay}
-                  className="mt-6 font-semibold py-2.5 px-6 rounded-full shadow-sm transition-colors border"
-                  style={{
-                    backgroundColor: 'var(--primary-accent)', 
-                    color: 'var(--primary-accent-text)',
-                    borderColor: 'var(--primary-accent-hover)'
-                  }}
-                  onMouseOver={(e) => e.currentTarget.style.backgroundColor = 'var(--primary-accent-hover)'}
-                  onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'var(--primary-accent)'}
-                  aria-label="Replay Reel"
-              >
-                  <i className="fas fa-redo fa-fw mr-1.5"></i>Replay Reel
-              </button>
-           )}
-        </div>
-      )}
-      
-      {!showInterimAd && attributionChunks && attributionChunks.length > 0 && (loadingState === LoadingState.READY || loadingState === LoadingState.REEL_FINISHED) && (
-        <AttributionLinks chunks={attributionChunks} />
-      )}
+	return (
+		<div
+			className='app-container'
+			style={{
+				backgroundColor: "var(--bg-main)",
+				color: "var(--text-main)",
+			}}>
+			<header
+				className={`w-full text-center ${
+					isResultsView && !showInterimAd
+						? "py-3"
+						: "my-6 md:my-8"
+				}`}>
+				<h1
+					className={`font-semibold ${
+						isResultsView && !showInterimAd
+							? "text-xl"
+							: "text-4xl md:text-5xl"
+					}`}
+					style={{
+						color:
+							isResultsView && !showInterimAd && !query
+								? "var(--text-muted)"
+								: "var(--text-main)",
+					}}>
+					{getAppTitle()}
+				</h1>
+			</header>
 
-      {loadingState === LoadingState.IDLE && !error && (
-          <div className="mt-8 text-center text-md flex-grow flex flex-col justify-center items-center" style={{color: 'var(--text-muted)'}}>
-            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-16 h-16 mb-4" style={{color: 'var(--border-color)'}}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z" />
-              <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 10.5h-6m3-3v6" /> {/* Plus inside search icon */}
-            </svg>
-            <p>Enter a search to begin your Crux AI reel journey!</p>
-          </div>
-      )}
-       <footer className="w-full text-center text-xs py-4 mt-auto" style={{color: 'var(--text-muted)'}}>
-          <p>Powered by Google Gemini. API Key: {process.env.API_KEY ? <span style={{color: 'var(--primary-accent)'}}>Provided</span> : <span style={{color: 'var(--error-border)'}}>Not Provided</span>}.</p>
-          <p>&copy; {new Date().getFullYear()} <span style={{fontWeight: 600, color: 'var(--primary-accent)'}}>Crux</span><span style={{color: 'var(--text-main)'}}> Search</span>. Simulated ads only.</p>
-        </footer>
-    </div>
-  );
+			{!showInterimAd && (
+				<SearchBar
+					onSearch={handleSearch}
+					isLoading={appIsBusy}
+					isResultsView={isResultsView}
+				/>
+			)}
+
+			{error && (
+				<ErrorDisplay
+					message={error}
+					onDismiss={() => {
+						setError(null);
+						setLoadingState(LoadingState.IDLE);
+						resetState();
+					}}
+				/>
+			)}
+
+			{showInterimAd && !error && (
+				<div className='w-full flex flex-col items-center text-center flex-grow justify-center'>
+					<Ads />
+					<LoadingSpinner
+						text={progressMessage || "Loading..."}
+						size='sm'
+					/>
+					<p
+						className='text-xs mt-3'
+						style={{ color: "var(--text-muted)" }}>
+						This is a simulated ad. Actual Google Ads
+						integration is not implemented.
+					</p>
+				</div>
+			)}
+
+			{!showInterimAd && isResultsView && !error && (
+				<div className='w-full flex flex-col items-center flex-grow justify-center'>
+					{(currentVisibleSlide ||
+						loadingState === LoadingState.REEL_FINISHED) && (
+						<ReelViewer
+							slide={
+								loadingState === LoadingState.REEL_FINISHED
+									? finalAd
+									: currentVisibleSlide
+							}
+							isPlaying={
+								isPlaying &&
+								loadingState === LoadingState.READY &&
+								!areImagesLoadingOverall
+							}
+							onSpeechEnd={handleSpeechEnd}
+							totalSlides={
+								reelSlides.length > 0
+									? reelSlides.length
+									: 1
+							}
+							currentSlideNumber={
+								loadingState === LoadingState.REEL_FINISHED
+									? reelSlides.length
+									: currentSlideIndex + 1
+							}
+							isAdView={
+								loadingState === LoadingState.REEL_FINISHED
+							}
+							onPrevClicked={handlePrevSlide}
+							onNextClicked={handleNextSlide}
+							onTogglePlayClicked={handleTogglePlay}
+							isLoadingImage={
+								areImagesLoadingOverall &&
+								loadingState ===
+									LoadingState.GENERATING_IMAGES &&
+								!currentVisibleSlide?.imageUrl
+							}
+						/>
+					)}
+					{loadingState === LoadingState.GENERATING_IMAGES &&
+						areImagesLoadingOverall &&
+						(!currentVisibleSlide ||
+							!currentVisibleSlide.imageUrl) && (
+							<LoadingSpinner
+								text={
+									progressMessage ||
+									"Preparing your Crux reel..."
+								}
+							/>
+						)}
+					{loadingState === LoadingState.REEL_FINISHED && (
+						<button
+							onClick={handleTogglePlay}
+							className='mt-6 font-semibold py-2.5 px-6 rounded-full shadow-sm transition-colors border'
+							style={{
+								backgroundColor: "var(--primary-accent)",
+								color: "var(--primary-accent-text)",
+								borderColor: "var(--primary-accent-hover)",
+							}}
+							onMouseOver={e =>
+								(e.currentTarget.style.backgroundColor =
+									"var(--primary-accent-hover)")
+							}
+							onMouseOut={e =>
+								(e.currentTarget.style.backgroundColor =
+									"var(--primary-accent)")
+							}
+							aria-label='Replay Reel'>
+							<i className='fas fa-redo fa-fw mr-1.5'></i>
+							Replay Reel
+						</button>
+					)}
+				</div>
+			)}
+
+			{!showInterimAd &&
+				attributionChunks &&
+				attributionChunks.length > 0 &&
+				(loadingState === LoadingState.READY ||
+					loadingState === LoadingState.REEL_FINISHED) && (
+					<AttributionLinks chunks={attributionChunks} />
+				)}
+
+			{loadingState === LoadingState.IDLE && !error && (
+				<div
+					className='mt-8 text-center text-md flex-grow flex flex-col justify-center items-center'
+					style={{ color: "var(--text-muted)" }}>
+					<svg
+						xmlns='http://www.w3.org/2000/svg'
+						fill='none'
+						viewBox='0 0 24 24'
+						strokeWidth={1.5}
+						stroke='currentColor'
+						className='w-16 h-16 mb-4'
+						style={{ color: "var(--border-color)" }}>
+						<path
+							strokeLinecap='round'
+							strokeLinejoin='round'
+							d='m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z'
+						/>
+						<path
+							strokeLinecap='round'
+							strokeLinejoin='round'
+							d='M16.5 10.5h-6m3-3v6'
+						/>{" "}
+						{/* Plus inside search icon */}
+					</svg>
+					<p>
+						Enter a search to begin your Crux AI reel journey!
+					</p>
+				</div>
+			)}
+			<footer
+				className='w-full text-center text-xs py-4 mt-auto'
+				style={{ color: "var(--text-muted)" }}>
+				<p>
+					Powered by Google Gemini. API Key:{" "}
+					{process.env.API_KEY ? (
+						<span style={{ color: "var(--primary-accent)" }}>
+							Provided
+						</span>
+					) : (
+						<span style={{ color: "var(--error-border)" }}>
+							Not Provided
+						</span>
+					)}
+					.
+				</p>
+				<p>
+					&copy; {new Date().getFullYear()}{" "}
+					<span
+						style={{
+							fontWeight: 600,
+							color: "var(--primary-accent)",
+						}}>
+						Crux
+					</span>
+					<span style={{ color: "var(--text-main)" }}>
+						{" "}
+						Search
+					</span>
+					. Simulated ads only.
+				</p>
+			</footer>
+		</div>
+	);
 };
 
 export default App;
