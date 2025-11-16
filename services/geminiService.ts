@@ -75,7 +75,7 @@ export const searchAndGenerateReelContent = async (query: string): Promise<Proce
   `;
 
   const captionResponse: GenerateContentResponse = await ai.models.generateContent({
-    model: "gemini-2.5-flash-preview-04-17",
+    model: "gemini-2.5-flash",
     contents: [{ role: "user", parts: [{ text: reelPrompt }] }],
     config: {
       responseMimeType: "application/json",
